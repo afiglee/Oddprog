@@ -33,15 +33,21 @@ void uart(void) __interrupt(4)
         
         RESET_RECEIVE_INTERRUPT_FLAG;
         READ_SERIAL(serial_in);
-
+#ifndef __SDCC_mcs51
+        printf("serial_in=0x%02X\n", serial_in);
+#endif
         if (serial_in == SLIP_END){
             if (IS_FLAG_SET(FLAG_RECEIVING_STATE)) {
                 CLEAR_FLAG(FLAG_RECEIVING_STATE);
                 SET_FLAG(FLAG_PROCESSING_STATE);
+                DISABLE_GLOBAL_INTERRUPTS;
             } else {
                 serial_seek = 0;
                 SET_FLAG(FLAG_RECEIVING_STATE);
             }
+#ifndef __SDCC_mcs51
+        printf("flags=0x%02X\n", flags);
+#endif
         } else if (IS_FLAG_SET(FLAG_RECEIVING_STATE)) {
             switch (serial_in) {
                 case SLIP_ESC:
@@ -59,6 +65,13 @@ void uart(void) __interrupt(4)
                     }
                 break;
                 default:
+                if (serial_last == SLIP_ESC){
+                    // ERROR - break communication                    
+                    CLEAR_FLAG(FLAG_RECEIVING_STATE);
+                    SET_FLAG(FLAG_PROCESSING_STATE);
+                    SET_FLAG(FLAG_ERROR_STATE);
+                    return;
+                }
                 break;
             }
             serial_last = 0;

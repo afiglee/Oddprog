@@ -11,7 +11,8 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(unit_tests
-  test_oddprog.cpp
+  test_slipprotocol.cpp
+  test_prog.cpp
   ../protocol.c
   ../device.c
   ../prog.c

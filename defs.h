@@ -10,6 +10,9 @@
 #endif
 #include <stdint.h>
 #include <string.h>
+#ifndef __SDCC_mcs51
+#include <stdio.h>
+#endif
 
 #ifdef __SDCC_mcs51
 #define __xdata __xdata
@@ -29,7 +32,7 @@
 #define ERROR_OK                0x00
 #define ERROR_PACKET_CORRUPTED  0xC0
 #define ERROR_PACKET_CHECKSUM   0xCE
-
+#define ERROR_PACKET_ESC_ERROR  0xEC /*SLIP_ESC is not following by SLIP_ESC_END or SLIP_ESC_ESC*/
 
 /* SLIP PROTOCOL */
 #define SLIP_END     0xC0
@@ -38,10 +41,10 @@
 #define SLIP_ESC_ESC 0xDD
 
 
-#define FLAG_MILLISEC           01
-#define FLAG_RECEIVING_STATE    02
-#define FLAG_PROCESSING_STATE   04
-
+#define FLAG_MILLISEC           0x01
+#define FLAG_RECEIVING_STATE    0x02
+#define FLAG_PROCESSING_STATE   0x04
+#define FLAG_ERROR_STATE        0x08  // Error ERROR_PACKET_ESC_ERROR detected in interrupt handling
 
 #define READ_SERIAL(A) A = SBUF
 #define WRITE_SERIAL(A) SBUF = A
@@ -64,6 +67,7 @@
 #define TRANSMIT_INTERRUPT_FLAG_SET TI == 1
 #define RESET_TRANSMIT_INTERRUPT_FLAG TI = 0
 #define ENABLE_GLOBAL_INTERRUPTS EA = 1
+#define DISABLE_GLOBAL_INTERRUPTS EA = 0
 /* -- 8051 specific -- */
 #else
 /* Test environment*/
@@ -71,8 +75,10 @@ extern uint8_t interrupt_flags;
 extern uint8_t SBUF; 
 extern uint8_t SPI_SS;
 #define RECEIVE_INTERRUPT_FLAG_SET (interrupt_flags & 1)
+#define SET_RECEIVE_INTERRUPT_FLAG (interrupt_flags |= 1)
 #define RESET_RECEIVE_INTERRUPT_FLAG (interrupt_flags &= 0xFE)
 #define ENABLE_GLOBAL_INTERRUPTS
+#define DISABLE_GLOBAL_INTERRUPTS
 #endif
 
 #define SET_FLAG(A) flags |= A;
@@ -117,10 +123,11 @@ extern OPTIONS options;
 extern "C" {
 #endif
 void device_init(void);
-int8_t on_packet_received(void);
+int8_t on_packet_received(uint8_t);
 uint8_t spi_exchange(uint8_t data);
 void spi_set_ss(void);
 void spi_reset_ss(void);
+int8_t prog_packet_exchange(PACKET *p);
 #ifdef __cplusplus
 }
 #endif

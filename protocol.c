@@ -15,13 +15,16 @@ int8_t on_options_packet(PACKET *p) {
     return 0;
 }
 
-int8_t on_packet_received(void) {
+int8_t on_packet_received(uint8_t data_size) {
 
     int8_t ret = 0;
     uint8_t checksum = 0;
     PACKET *p = (PACKET*) work_buffer;
     
     // Verify integrity
+    if (data_size < sizeof(PACKET)) {
+        return ERROR_PACKET_CORRUPTED;
+    }
     if (p->packet_size > (BUFFER_SIZE - 1) || p->packet_size < 2) {
         return ERROR_PACKET_CORRUPTED;
     }

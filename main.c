@@ -21,10 +21,17 @@ int main(void)
   
     while (1) {
 		if (IS_FLAG_SET(FLAG_PROCESSING_STATE)) {
-            for (uint8_t kk = 0; kk < BUFFER_SIZE; kk++){
-                work_buffer[kk] = serial_buffer[kk];
+            if (IS_FLAG_SET(FLAG_ERROR_STATE)) {
+                //TODO replay with error
+                ENABLE_GLOBAL_INTERRUPTS;
+		    } else {
+                uint8_t data_size = serial_seek;
+                for (uint8_t kk = 0; kk < data_size; kk++){
+                    work_buffer[kk] = serial_buffer[kk];
+                }
+                ENABLE_GLOBAL_INTERRUPTS;
+                on_packet_received(data_size);
             }
-		    on_packet_received();
             CLEAR_FLAG(FLAG_PROCESSING_STATE);
         } 
         if (flags & FLAG_MILLISEC) {
