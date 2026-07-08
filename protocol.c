@@ -31,6 +31,7 @@ int8_t on_packet_received(uint8_t data_size) {
     for (uint8_t kk = 0; kk < p->packet_size - 2; kk++) {
         checksum += p->data[kk];
     }
+    checksum += p->packet_checksum;
     checksum += p->cmd;
     if (checksum) {
         return ERROR_PACKET_CHECKSUM;

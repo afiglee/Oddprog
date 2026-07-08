@@ -97,7 +97,7 @@ extern uint8_t SPI_SS;
 
 typedef struct s_PACKET {
     uint8_t packet_size;
-    uint8_t packet_checksum; // sum (cmd + loop(data[packet_size - 1])) == 0
+    uint8_t packet_checksum; // two's complement: packet_checksum + cmd + sum(data[0..packet_size-3]) == 0 (mod 256)
     uint8_t cmd;             // contains cmd flag
     uint8_t data[];         // First byte is always a size of data packet, 0 in case of 256 bytes (have CMDFLAG_DATASIZE_256 set)
 } PACKET;
