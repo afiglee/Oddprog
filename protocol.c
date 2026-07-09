@@ -39,5 +39,5 @@ int8_t on_packet_received(uint8_t data_size) {
     if (p->cmd & CMDFLAG_OPTIONS) {
         return on_options_packet(p);
     }
-    return ERROR_OK;
+    return prog_packet_exchange(p);
 }
