@@ -68,17 +68,23 @@
 #define RESET_TRANSMIT_INTERRUPT_FLAG TI = 0
 #define ENABLE_GLOBAL_INTERRUPTS EA = 1
 #define DISABLE_GLOBAL_INTERRUPTS EA = 0
+/* Blocking transmit; only call with serial interrupt masked, the ISR
+   does not handle TI */
+#define SERIAL_SEND_BYTE(A) do { WRITE_SERIAL(A); \
+    while (!(TRANSMIT_INTERRUPT_FLAG_SET)); \
+    RESET_TRANSMIT_INTERRUPT_FLAG; } while (0)
 /* -- 8051 specific -- */
 #else
 /* Test environment*/
 extern uint8_t interrupt_flags;
-extern uint8_t SBUF; 
+extern uint8_t SBUF;
 extern uint8_t SPI_SS;
 #define RECEIVE_INTERRUPT_FLAG_SET (interrupt_flags & 1)
 #define SET_RECEIVE_INTERRUPT_FLAG (interrupt_flags |= 1)
 #define RESET_RECEIVE_INTERRUPT_FLAG (interrupt_flags &= 0xFE)
 #define ENABLE_GLOBAL_INTERRUPTS
 #define DISABLE_GLOBAL_INTERRUPTS
+#define SERIAL_SEND_BYTE(A) test_serial_out(A)
 #endif
 
 #define SET_FLAG(A) flags |= A;
@@ -127,6 +133,10 @@ extern "C" {
 #endif
 void device_init(void);
 int8_t on_packet_received(uint8_t);
+void send_response(int8_t status);
+#ifndef __SDCC_mcs51
+void test_serial_out(uint8_t data);
+#endif
 uint8_t spi_exchange(uint8_t data);
 void spi_set_ss(void);
 void spi_reset_ss(void);

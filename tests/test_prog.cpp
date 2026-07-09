@@ -410,6 +410,113 @@ TEST(OddProgStub, ProgLP51ReadAtmelSignature)
     EXPECT_EQ(std::vector<uint8_t>(read_back.begin() + 1, read_back.end()), sig);
 }
 
+// --- Response packets -------------------------------------------------------
+// Response, SLIP framed: [packet_size, packet_checksum, status, data...].
+// Data (the request's data area with read bytes filled in) is echoed only for
+// a successful non-options packet without CMDFLAG_WRITE_DIRECTION.
+
+// Decodes one SLIP frame and verifies the response checksum;
+// returns the unescaped packet [size, checksum, status, data...]
+static std::vector<uint8_t> decode_response(const std::vector<uint8_t> &raw) {
+    EXPECT_GE(raw.size(), 5);
+    EXPECT_EQ(raw.front(), SLIP_END);
+    EXPECT_EQ(raw.back(), SLIP_END);
+    std::vector<uint8_t> packet;
+    for (size_t kk = 1; kk + 1 < raw.size(); kk++) {
+        if (raw[kk] == SLIP_ESC) {
+            kk++;
+            EXPECT_LT(kk + 1, raw.size());
+            EXPECT_TRUE(raw[kk] == SLIP_ESC_END || raw[kk] == SLIP_ESC_ESC);
+            packet.push_back(raw[kk] == SLIP_ESC_END ? SLIP_END : SLIP_ESC);
+        } else {
+            EXPECT_NE(raw[kk], SLIP_END);
+            packet.push_back(raw[kk]);
+        }
+    }
+    EXPECT_GE(packet.size(), 3);
+    EXPECT_EQ(packet[0], packet.size() - 1);
+    uint8_t sum = 0;
+    for (size_t kk = 1; kk < packet.size(); kk++) {
+        sum += packet[kk];
+    }
+    EXPECT_EQ(sum, 0);
+    return packet;
+}
+
+TEST(OddProgStub, ResponseToWritePacket)
+{
+    test_env_reset();
+    options.options |= OPTION_USE_SS;
+    run_isp_command({ISP_PREAMBLE_1, ISP_PREAMBLE_2, ISP_LOAD_PAGE_BUFFER, 0x00},
+                    {0x00, 0x11, 0x22}, true);
+    send_response(ERROR_OK);
+
+    std::vector<uint8_t> packet = decode_response(vcSerialOut);
+    EXPECT_EQ(packet.size(), 3); // status only, no data echo
+    EXPECT_EQ(packet[2], ERROR_OK);
+}
+
+TEST(OddProgStub, ResponseToReadPacketEchoesData)
+{
+    test_env_reset();
+    options.options |= OPTION_USE_SS;
+    // Read three lock bytes; MISO returns garbage during addrL, then the values.
+    // 0xC0 and 0xDB force SLIP escaping in the response.
+    std::vector<uint8_t> locks = {0xC0, 0xDB, 0x00};
+    std::vector<uint8_t> miso = {0xFF};
+    miso.insert(miso.end(), locks.begin(), locks.end());
+    std::vector<uint8_t> instr = {ISP_PREAMBLE_1, ISP_PREAMBLE_2, ISP_READ_LOCK_BITS, 0x00};
+    run_isp_command(instr, std::vector<uint8_t>(locks.size() + 1, 0x00), false, miso);
+    send_response(ERROR_OK);
+
+    std::vector<uint8_t> packet = decode_response(vcSerialOut);
+    EXPECT_EQ(packet[2], ERROR_OK);
+    // data echo: size byte + instruction + read-back payload
+    ASSERT_EQ(packet.size(), 3 + 1 + instr.size() + locks.size() + 1);
+    const uint8_t *echo = packet.data() + 3;
+    EXPECT_EQ(echo[0], locks.size() + 1); // transfer size byte
+    for (size_t kk = 0; kk < instr.size(); kk++) {
+        EXPECT_EQ(echo[1 + kk], instr[kk]);
+    }
+    EXPECT_EQ(echo[1 + instr.size()], 0xFF); // garbage byte during addrL
+    for (size_t kk = 0; kk < locks.size(); kk++) {
+        EXPECT_EQ(echo[2 + instr.size() + kk], locks[kk]);
+    }
+}
+
+TEST(OddProgStub, ResponseToChecksumError)
+{
+    test_env_reset();
+    uint8_t received_packet[] = {0x05, 0x00,
+        CMDFLAG_NEW_PACKET | CMDFLAG_LAST_PACKET | INSTRUCTION_SIZE_2BYTES,
+        0x00, 0xAC, 0x53};
+    fill_packet_checksum(received_packet, sizeof(received_packet));
+    received_packet[4] += 1; // corrupt one data byte
+
+    memcpy(work_buffer, received_packet, sizeof(received_packet));
+    int8_t ret = on_packet_received(sizeof(received_packet));
+    send_response(ret);
+
+    std::vector<uint8_t> packet = decode_response(vcSerialOut);
+    EXPECT_EQ(packet.size(), 3);
+    EXPECT_EQ(packet[2], ERROR_PACKET_CHECKSUM);
+}
+
+TEST(OddProgStub, ResponseToOptionsPacket)
+{
+    test_env_reset();
+    uint8_t received_packet[] = {0x04, 0x00, CMDFLAG_OPTIONS, 0x00, OPTION_USE_SS};
+    fill_packet_checksum(received_packet, sizeof(received_packet));
+
+    memcpy(work_buffer, received_packet, sizeof(received_packet));
+    int8_t ret = on_packet_received(sizeof(received_packet));
+    send_response(ret);
+
+    std::vector<uint8_t> packet = decode_response(vcSerialOut);
+    EXPECT_EQ(packet.size(), 3); // status only
+    EXPECT_EQ(packet[2], ERROR_OK);
+}
+
 // --- Multi-packet transfers ------------------------------------------------
 
 // A full 64-byte code page (+ addrL) does not fit in one 64-byte work buffer:

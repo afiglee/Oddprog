@@ -19,13 +19,20 @@ uint8_t SPI_SS;
 
 extern std::vector<uint8_t> vcReceived;
 extern std::vector<uint8_t> vcSentOut;
- 
+
+std::vector<uint8_t> vcSerialOut;
+
+extern "C" void test_serial_out(uint8_t data) {
+    vcSerialOut.push_back(data);
+}
+
 void test_env_reset() {
     flags = 0;
     options.options = 0;
     SPI_SS = 1;
     vcReceived.clear();
     vcSentOut.clear();
+    vcSerialOut.clear();
 }
 
 TEST(SlipProtocolStub, SlipPacketReceiveValid)

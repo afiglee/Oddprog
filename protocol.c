@@ -15,6 +15,43 @@ int8_t on_options_packet(PACKET *p) {
     return 0;
 }
 
+static void slip_send_byte(uint8_t data) {
+    if (data == SLIP_END) {
+        SERIAL_SEND_BYTE(SLIP_ESC);
+        SERIAL_SEND_BYTE(SLIP_ESC_END);
+    } else if (data == SLIP_ESC) {
+        SERIAL_SEND_BYTE(SLIP_ESC);
+        SERIAL_SEND_BYTE(SLIP_ESC_ESC);
+    } else {
+        SERIAL_SEND_BYTE(data);
+    }
+}
+
+/* Response packet, SLIP framed: [packet_size, packet_checksum, status, data...]
+   The request's data area (with read bytes filled in by prog_packet_exchange)
+   is echoed back only for a successful non-options packet without
+   CMDFLAG_WRITE_DIRECTION; otherwise the response carries the status alone. */
+void send_response(int8_t status) {
+    PACKET *p = (PACKET*) work_buffer;
+    uint8_t data_size = 0;
+    uint8_t checksum = (uint8_t)status;
+    if (status == ERROR_OK && !(p->cmd & CMDFLAG_OPTIONS)
+            && !(p->cmd & CMDFLAG_WRITE_DIRECTION)) {
+        data_size = p->packet_size - 2;
+    }
+    for (uint8_t kk = 0; kk < data_size; kk++) {
+        checksum += p->data[kk];
+    }
+    SERIAL_SEND_BYTE(SLIP_END);
+    slip_send_byte(data_size + 2);
+    slip_send_byte((uint8_t)(0 - checksum));
+    slip_send_byte((uint8_t)status);
+    for (uint8_t kk = 0; kk < data_size; kk++) {
+        slip_send_byte(p->data[kk]);
+    }
+    SERIAL_SEND_BYTE(SLIP_END);
+}
+
 int8_t on_packet_received(uint8_t data_size) {
 
     int8_t ret = 0;
